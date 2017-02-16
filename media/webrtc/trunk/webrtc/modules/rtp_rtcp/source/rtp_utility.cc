@@ -436,6 +436,40 @@ void RtpHeaderParser::ParseOneByteExtensionHeader(
           header->extension.hasRID = true;
           break;
         }
+        case kRtpExtensionOriginalHeaderBlock: {
+          //  0                   1
+          //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+          // +-+-+-+-+-+-+-+-+---------------+
+          // |  ID   | len=0 |R|     PT      |
+          // +-+-+-+-+-+-+-+-+---------------+
+          //  0                   1                   2
+          //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3
+          // +-+-+-+-+-+-+-+-+-------------------------------+
+          // |  ID   | len=1 |        Sequence Number        |
+          // +-+-+-+-+-+-+-+-+-------------------------------+
+          //  0                   1                   2                   3
+          //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 6 4 5 6 7 8 9 1
+          // +-+-+-+-+-+-+-+-+---------------+-------------------------------+
+          // |  ID   | len=2 |R|     PT      |        Sequence Number        |
+          // +-+-+-+-+-+-+-+-+---------------+-------------------------------+
+          if (len > 2) {
+            LOG(LS_WARNING) << "Incorrect original header block len: "
+                            << len;
+            return;
+          }
+          if ((len == 0) || (len == 2)) {
+            header->extension.ohbPt = ptr[0] & 0x7f;
+          }
+          if (len == 1 || len == 2) {
+            uint8_t offset = 0;
+            if (len == 2) {
+              offset = 1;
+            }
+            uint16_t sequence_number = ptr[offset++] << 8;
+            sequence_number += ptr[offset];
+            header->extension.ohbSequenceNumber = sequence_number;
+          }
+        }
         default: {
           LOG(LS_WARNING) << "Extension type not implemented: " << type;
           return;

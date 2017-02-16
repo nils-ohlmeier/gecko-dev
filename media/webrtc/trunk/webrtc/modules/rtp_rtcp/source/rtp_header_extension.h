@@ -28,6 +28,7 @@ const size_t kVideoRotationLength = 2;
 const size_t kTransportSequenceNumberLength = 3;
 // kRtpStreamIdLength is variable
 const size_t kRtpStreamIdLength = 4; // max 1-byte header extension length
+const size_t kOriginalHeaderBlockLength = 3;
 
 struct HeaderExtension {
   explicit HeaderExtension(RTPExtensionType extension_type)
@@ -62,6 +63,9 @@ struct HeaderExtension {
         break;
       case kRtpExtensionRtpStreamId:
         length = kRtpStreamIdLength;
+        break;
+      case kRtpExtensionOriginalHeaderBlock:
+        length = kOriginalHeaderBlockLength;
         break;
       default:
         assert(false);

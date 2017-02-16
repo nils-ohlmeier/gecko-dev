@@ -178,6 +178,7 @@ class RTPSender : public RTPSenderInterface {
   uint8_t BuildTransportSequenceNumberExtension(uint8_t* data_buffer,
                                                 uint16_t sequence_number) const;
   uint8_t BuildRIDExtension(uint8_t* data_buffer) const;
+  uint8_t BuildOriginalHeaderBlockExtension(uint8_t* data_buffer) const;
 
   // Verifies that the specified extension is registered, and that it is
   // present in rtp packet. If extension is not registered kNotRegistered is

@@ -185,7 +185,9 @@ VideoSendStream::VideoSendStream(
     } else if (extension == RtpExtension::kTransportSequenceNumber) {
       RTC_CHECK_EQ(0, vie_channel_->SetSendTransportSequenceNumber(true, id));
     } else if (extension == RtpExtension::kRtpStreamId) {
-      RTC_CHECK_EQ(0, vie_channel_->SetSendRtpStreamId(true,id));
+      RTC_CHECK_EQ(0, vie_channel_->SetSendRtpStreamId(true, id));
+    } else if (extension == RtpExtension::kOriginalHeaderBlock) {
+      RTC_CHECK_EQ(0, vie_channel_->SetSendOriginalHeaderBlock(true, id));
     } else {
       RTC_NOTREACHED() << "Registering unsupported RTP extension.";
     }

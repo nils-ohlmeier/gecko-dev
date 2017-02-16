@@ -37,6 +37,11 @@ class SrtpFlow {
                                           const void *key,
                                           size_t key_len);
 
+  nsresult CreateDouble(int cipher_suite,
+                        bool inbound,
+                        const void *key,
+                        size_t key_len);
+
   nsresult ProtectRtp(void *in, int in_len,
                       int max_len, int *out_len);
   nsresult UnprotectRtp(void *in, int in_len,
@@ -52,7 +57,10 @@ class SrtpFlow {
 
 
  private:
-  SrtpFlow() : session_(nullptr) {}
+  SrtpFlow() : double_(false),
+               session_(nullptr),
+               session2_(nullptr)
+    {}
 
   nsresult CheckInputs(bool protect, void *in, int in_len,
                        int max_len, int *out_len);
@@ -60,7 +68,10 @@ class SrtpFlow {
   static nsresult Init();
   static bool initialized;  // Was libsrtp initialized? Only happens once.
 
+  bool double_;
+
   srtp_t session_;
+  srtp_t session2_;
 };
 
 }  // End of namespace

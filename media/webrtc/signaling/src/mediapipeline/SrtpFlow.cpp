@@ -25,7 +25,11 @@ SrtpFlow::~SrtpFlow() {
   if (session_) {
     srtp_dealloc(session_);
   }
+  if (session2_) {
+    srtp_dealloc(session2_);
+  }
 }
+
 
 RefPtr<SrtpFlow> SrtpFlow::Create(int cipher_suite,
                                            bool inbound,
@@ -90,6 +94,65 @@ RefPtr<SrtpFlow> SrtpFlow::Create(int cipher_suite,
   return flow;
 }
 
+nsresult SrtpFlow::CreateDouble(int cipher_suite,
+                                        bool inbound,
+                                        const void *key,
+                                        size_t key_len) {
+  //FIXME this is ugly copy and paste
+  if (!key) {
+    MOZ_MTLOG(ML_ERROR, "Null SRTP key specified");
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  if (key_len != SRTP_TOTAL_KEY_LENGTH) {
+    MOZ_MTLOG(ML_ERROR, "Invalid SRTP key length");
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+
+  srtp_policy_t policy;
+  memset(&policy, 0, sizeof(srtp_policy_t));
+
+  // Note that we set the same cipher suite for RTP and RTCP
+  // since any flow can only have one cipher suite with DTLS-SRTP
+  switch (cipher_suite) {
+    case SRTP_AES128_CM_HMAC_SHA1_80:
+      MOZ_MTLOG(ML_DEBUG,
+                "Setting SRTP cipher suite SRTP_AES128_CM_HMAC_SHA1_80");
+      crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtp);
+      crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp);
+      break;
+    case SRTP_AES128_CM_HMAC_SHA1_32:
+      MOZ_MTLOG(ML_DEBUG,
+                "Setting SRTP cipher suite SRTP_AES128_CM_HMAC_SHA1_32");
+      crypto_policy_set_aes_cm_128_hmac_sha1_32(&policy.rtp);
+      crypto_policy_set_aes_cm_128_hmac_sha1_80(&policy.rtcp); // 80-bit per RFC 5764
+      break;                                                   // S 4.1.2.
+    default:
+      MOZ_MTLOG(ML_ERROR, "Request to set unknown SRTP cipher suite");
+      return NS_ERROR_ILLEGAL_VALUE;
+  }
+  // This key is copied into the srtp_t object, so we don't
+  // need to keep it.
+  policy.key = const_cast<unsigned char *>(
+      static_cast<const unsigned char *>(key));
+  policy.ssrc.type = inbound ? ssrc_any_inbound : ssrc_any_outbound;
+  policy.ssrc.value = 0;
+  policy.ekt = nullptr;
+  policy.window_size = 1024;   // Use the Chrome value.  Needs to be revisited.  Default is 128
+  policy.allow_repeat_tx = 1;  // Use Chrome value; needed for NACK mode to work
+  policy.next = nullptr;
+
+  // Now make the session
+  err_status_t r = srtp_create(&this->session2_, &policy);
+  if (r != err_status_ok) {
+    MOZ_MTLOG(ML_ERROR, "Error creating 2nd srtp session");
+    return NS_ERROR_FAILURE;
+  }
+
+  double_ = true;
+
+  return NS_OK;
+}
 
 nsresult SrtpFlow::CheckInputs(bool protect, void *in, int in_len,
                                int max_len, int *out_len) {
@@ -132,8 +195,19 @@ nsresult SrtpFlow::ProtectRtp(void *in, int in_len,
   if (NS_FAILED(res))
     return res;
 
+  err_status_t r;
   int len = in_len;
-  err_status_t r = srtp_protect(session_, in, &len);
+
+  if (double_) {
+    r = srtp_protect(session2_, in, &len);
+
+    if (r != err_status_ok) {
+      MOZ_MTLOG(ML_ERROR, "Error double protecting SRTP packet");
+      return NS_ERROR_FAILURE;
+    }
+  }
+
+  r = srtp_protect(session_, in, &len);
 
   if (r != err_status_ok) {
     MOZ_MTLOG(ML_ERROR, "Error protecting SRTP packet");
@@ -162,6 +236,15 @@ nsresult SrtpFlow::UnprotectRtp(void *in, int in_len,
   if (r != err_status_ok) {
     MOZ_MTLOG(ML_ERROR, "Error unprotecting SRTP packet error=" << (int)r);
     return NS_ERROR_FAILURE;
+  }
+
+  if (double_) {
+    r = srtp_unprotect(session2_, in, &len);
+
+    if (r != err_status_ok) {
+      MOZ_MTLOG(ML_ERROR, "Error unprotecting SRTP packet error=" << (int)r);
+      return NS_ERROR_FAILURE;
+    }
   }
 
   MOZ_ASSERT(len <= max_len);

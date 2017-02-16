@@ -686,6 +686,23 @@ int ViEChannel::SetReceiveRtpStreamId(bool enable, int id) {
   return vie_receiver_.SetReceiveRIDStatus(enable, id) ? 0 : -1;
 }
 
+int ViEChannel::SetSendOriginalHeaderBlock(bool enable, int id) {
+  // Disable any previous registrations of this extension to avoid errors.
+  for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
+    rtp_rtcp->DeregisterSendRtpHeaderExtension(
+        kRtpExtensionOriginalHeaderBlock);
+  }
+  if (!enable)
+    return 0;
+  // Enable the extension.
+  int error = 0;
+  for (RtpRtcp* rtp_rtcp : rtp_rtcp_modules_) {
+    error |= rtp_rtcp->RegisterSendRtpHeaderExtension(
+        kRtpExtensionOriginalHeaderBlock, id);
+  }
+  return error;
+}
+
 void ViEChannel::SetRtcpXrRrtrStatus(bool enable) {
   rtp_rtcp_modules_[0]->SetRtcpXrRrtrStatus(enable);
 }

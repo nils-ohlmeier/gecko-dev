@@ -68,6 +68,7 @@ struct RtpExtension {
   static const char* kAudioLevel;
   static const char* kTransportSequenceNumber;
   static const char* kRtpStreamId;
+  static const char* kOriginalHeaderBlock;
   std::string name;
   int id;
 };

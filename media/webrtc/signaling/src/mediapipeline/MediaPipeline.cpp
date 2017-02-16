@@ -48,8 +48,10 @@
 #include "mozilla/SharedThreadPool.h"
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
 #include "mozilla/PeerIdentity.h"
-#include "mozilla/Preferences.h"
 #include "mozilla/TaskQueue.h"
+#endif
+#if defined(MOZILLA_INTERNAL_API)
+#include "mozilla/Preferences.h"
 #endif
 #include "mozilla/gfx/Point.h"
 #include "mozilla/gfx/Types.h"
@@ -618,6 +620,7 @@ MediaPipeline::MediaPipeline(const std::string& pc,
     rtcp_packets_received_(0),
     rtp_bytes_sent_(0),
     rtp_bytes_received_(0),
+    double_crypto(false),
     pc_(pc),
     description_(),
     filter_(filter),
@@ -644,6 +647,15 @@ nsresult MediaPipeline::Init() {
   } else {
     conduit_->SetTransmitterTransport(transport_);
   }
+
+#if defined(MOZILLA_INTERNAL_API)
+  double_crypto = Preferences::GetBool("media.peerconnection.double", false);
+  memset(&double_key, 0, sizeof(double_key));
+  nsAdoptingString keyStr = Preferences::GetString("media.peerconnection.double_key");
+  if (keyStr.Length() == (SRTP_TOTAL_KEY_LENGTH * 2)) {
+    memcpy(&double_key, keyStr.get(), SRTP_TOTAL_KEY_LENGTH * 2);
+  }
+#endif
 
   RUN_ON_THREAD(sts_thread_,
                 WrapRunnable(
@@ -879,6 +891,7 @@ nsresult MediaPipeline::TransportReady_s(TransportInfo &info) {
                                      SRTP_TOTAL_KEY_LENGTH);
   info.recv_srtp_ = SrtpFlow::Create(cipher_suite, true, read_key,
                                      SRTP_TOTAL_KEY_LENGTH);
+
   if (!info.send_srtp_ || !info.recv_srtp_) {
     MOZ_MTLOG(ML_ERROR, "Couldn't create SRTP flow for "
               << ToString(info.type_));
@@ -887,9 +900,42 @@ nsresult MediaPipeline::TransportReady_s(TransportInfo &info) {
     return NS_ERROR_FAILURE;
   }
 
-    MOZ_MTLOG(ML_INFO, "Listening for " << ToString(info.type_)
-                       << " packets received on " <<
-                       static_cast<void *>(dtls->downward()));
+  if (double_crypto) {
+    unsigned char d_cw_key[SRTP_TOTAL_KEY_LENGTH];
+    unsigned char d_sw_key[SRTP_TOTAL_KEY_LENGTH];
+    int d_offset = 0;
+    memcpy(d_cw_key, double_key + d_offset, SRTP_MASTER_KEY_LENGTH);
+    d_offset += SRTP_MASTER_KEY_LENGTH;
+    memcpy(d_sw_key, double_key + d_offset, SRTP_MASTER_KEY_LENGTH);
+    d_offset += SRTP_MASTER_KEY_LENGTH;
+    memcpy(d_cw_key + SRTP_MASTER_KEY_LENGTH,
+           double_key + d_offset, SRTP_MASTER_SALT_LENGTH);
+    d_offset += SRTP_MASTER_SALT_LENGTH;
+    memcpy(d_sw_key + SRTP_MASTER_KEY_LENGTH,
+           double_key + d_offset, SRTP_MASTER_SALT_LENGTH);
+    d_offset += SRTP_MASTER_SALT_LENGTH;
+    MOZ_ASSERT(d_offset == sizeof(double_key));
+
+    unsigned char *d_write_key;
+    unsigned char *d_read_key;
+
+    if (dtls->role() == TransportLayerDtls::CLIENT) {
+      d_write_key = d_cw_key;
+      d_read_key = d_sw_key;
+    } else {
+      d_write_key = d_sw_key;
+      d_read_key = d_cw_key;
+    }
+
+    info.send_srtp_->CreateDouble(cipher_suite, false, d_write_key,
+                                  SRTP_TOTAL_KEY_LENGTH);
+    info.recv_srtp_->CreateDouble(cipher_suite, true, d_read_key,
+                                  SRTP_TOTAL_KEY_LENGTH);
+  }
+
+  MOZ_MTLOG(ML_INFO, "Listening for " << ToString(info.type_)
+                     << " packets received on " <<
+                     static_cast<void *>(dtls->downward()));
 
   switch (info.type_) {
     case RTP:
@@ -1633,7 +1679,7 @@ MediaPipeline::TransportInfo* MediaPipeline::GetTransportInfo_s(
 nsresult MediaPipeline::PipelineTransport::SendRtpPacket(
     const uint8_t* data, size_t len) {
 
-  nsAutoPtr<DataBuffer> buf(new DataBuffer(data, len, len + SRTP_MAX_EXPANSION));
+  nsAutoPtr<DataBuffer> buf(new DataBuffer(data, len, len + (2 * SRTP_MAX_EXPANSION)));
 
   RUN_ON_THREAD(sts_thread_,
                 WrapRunnable(

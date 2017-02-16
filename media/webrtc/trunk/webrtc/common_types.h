@@ -853,6 +853,11 @@ struct RTPHeaderExtension {
   // RID values for simulcast; see draft-roach-avtext-rid
   bool hasRID;
   char *rid; // UTF8 string
+
+  // Original Header Block for PER per draft-ietf-perc-double
+  bool hasOriginalHeaderBlock;
+  uint8_t ohbPt;
+  uint16_t ohbSequenceNumber;
 };
 
 struct RTPHeader {

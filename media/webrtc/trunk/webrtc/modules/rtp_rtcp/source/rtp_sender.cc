@@ -1281,6 +1281,9 @@ uint16_t RTPSender::BuildRTPHeaderExtension(uint8_t* data_buffer,
       case kRtpExtensionRtpStreamId:
         block_length = BuildRIDExtension(extension_data);
         break;
+      case kRtpExtensionOriginalHeaderBlock:
+        block_length = BuildOriginalHeaderBlockExtension(extension_data);
+        break;
       default:
         assert(false);
     }
@@ -1484,6 +1487,38 @@ uint8_t RTPSender::BuildRIDExtension(
   memcpy(data_buffer + pos, rid_, len);
   pos += len;
   return pos;
+}
+
+uint8_t RTPSender::BuildOriginalHeaderBlockExtension(
+    uint8_t* data_buffer) const {
+  //  0                   1
+  //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+  // +-+-+-+-+-+-+-+-+---------------+
+  // |  ID   | len=0 |R|     PT      |
+  // +-+-+-+-+-+-+-+-+---------------+
+  //  0                   1                   2
+  //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3
+  // +-+-+-+-+-+-+-+-+-------------------------------+
+  // |  ID   | len=1 |        Sequence Number        |
+  // +-+-+-+-+-+-+-+-+-------------------------------+
+  //  0                   1                   2                   3
+  //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 6 4 5 6 7 8 9 1
+  // +-+-+-+-+-+-+-+-+---------------+-------------------------------+
+  // |  ID   | len=2 |R|     PT      |        Sequence Number        |
+  // +-+-+-+-+-+-+-+-+---------------+-------------------------------+
+  //
+  // TODO add support for variants two and three
+  uint8_t id;
+  if (rtp_header_extension_map_.GetId(kRtpExtensionOriginalHeaderBlock,
+                                      &id) != 0) {
+    // Not registered or not set
+    return 0;
+  }
+  size_t pos = 0;
+  const uint8_t len = 0;
+  data_buffer[pos++] = (id << 4) + len;
+  data_buffer[pos++] = (0x7f & payload_type_);
+  return kOriginalHeaderBlockLength;
 }
 
 bool RTPSender::FindHeaderExtensionPosition(RTPExtensionType type,

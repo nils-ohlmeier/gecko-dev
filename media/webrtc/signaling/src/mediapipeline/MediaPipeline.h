@@ -274,6 +274,9 @@ class MediaPipeline : public sigslot::has_slots<> {
 
   std::vector<uint32_t> ssrcs_received_;
 
+  bool double_crypto;
+  unsigned char double_key [SRTP_TOTAL_KEY_LENGTH * 2];
+
   // Written on Init. Read on STS thread.
   std::string pc_;
   std::string description_;

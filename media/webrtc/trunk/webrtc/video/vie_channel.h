@@ -115,6 +115,7 @@ class ViEChannel : public VCMFrameTypeCallback,
   int SetReceiveTransportSequenceNumber(bool enable, int id);
   int SetSendRtpStreamId(bool enable, int id); // RtpStreamId (RID)
 	int SetReceiveRtpStreamId(bool enable, int id); // RtpStreamId (RID)
+  int SetSendOriginalHeaderBlock(bool enable, int id);
   void SetRtcpXrRrtrStatus(bool enable);
   void EnableTMMBR(bool enable);
 

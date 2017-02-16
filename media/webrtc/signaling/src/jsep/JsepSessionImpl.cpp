@@ -2292,6 +2292,10 @@ JsepSessionImpl::SetupDefaultRtpExtensions()
 {
   AddAudioRtpExtension("urn:ietf:params:rtp-hdrext:ssrc-audio-level",
                        SdpDirectionAttribute::Direction::kSendonly);
+  AddAudioRtpExtension("urn:ietf:params:rtp-hdrext:ohb",
+                       SdpDirectionAttribute::Direction::kSendrecv);
+  AddVideoRtpExtension("urn:ietf:params:rtp-hdrext:ohb",
+                       SdpDirectionAttribute::Direction::kSendrecv);
 }
 
 void
